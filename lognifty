@@ -1,0 +1,189 @@
+from SmartApi import SmartConnect
+import pyotp
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# 1. Login & Session Setup ---
+api_key = "KGA1z4J3"
+client_id = "ASGOA2297"
+pin = "1234"  # तुमचा 4-अंकी MPIN डालें
+totp_secret="B2VUAMV6T6B4V2SO2BYHE4KXGM"
+
+smart_obj = SmartConnect(api_key=api_key)
+totp_token = pyotp.TOTP(totp_secret).now()
+data = smart_obj.generateSession(client_id, pin, totp_token)
+
+if not data.get('status'):
+    print("Login Failed:", data.get('message'))
+    exit()
+
+print("Login Successful!")
+auth_token =data['data']['jwtToken']
+refresh_token =data['data']['refreshToken']
+
+# 2. Profile & Funds Check ---
+profile = smart_obj.getProfile(refresh_token)
+print(f"\n- User Profile -\nName: {profile.get('data', {}).get('name')}")
+
+funds = smart_obj.rmsLimit()
+print(f"\n- Available Funds -\nNet Margin: {funds.get('data', {}).get('net')}")
+
+# 3. Nifty 50 OTM Strike Selection & Indicator Logic Placeholder ---
+# (येथे तुम्ही 9 EMA, RSI, Bollinger Bands आणि Volume च्या अटी तपासून 'CE' किंवा 'PE' ठरवू शकता)
+
+# समजा निफ्टीचा स्पॉट प्राईस २४,३६६ आहे, त्यानुसार तिसरा OTM कॉल ऑप्शन 24500 CE ठरवला आहे:
+tradingsymbol = "NIFTY24500CE" 
+symboltoken = "NIFTY_TOKEN_ID" # निफ्टीचा योग्य टोकन नंबर टाका
+
+# 4. Order Placement (Automated based on sentiment) ---
+order_params = {
+    'variety': 'NORMAL',
+    'tradingsymbol': tradingsymbol,
+    'symboltoken': symboltoken,
+    'transactiontype': 'BUY',
+    'exchange': 'NSE',
+    'ordertype': 'MARKET',  # किंवा 'LIMIT'
+    'producttype': 'INTRADAY', 
+    'duration': 'DAY',
+    'quantity': '50',  # निफ्टी लॉट साइज नुसार (उदा. 50 किंवा त्याचे मल्टिप्लस)
+    'squareoff': '0',
+    'stoploss': '0',
+}
+
+try:
+    # तांत्रिक निर्देशकांचे संकेत (Sentiment check) तपासल्यानंतर ऑर्डर प्लेस होईल
+    # समजा सर्व इंडिकेटर कॉलनुसार (Call Sentiment > 50+) आहेत:
+    print("Indicators show BULLISH sentiment. Placing Call Order...")
+    order_id = smart_obj.placeOrder(order_params)
+    print(f"Order placed successfully. Order ID: {order_id}")
+    
+except Exception as e:
+    print(f"Order placement failed: {e}")
+import pandas as pd
+
+def calculate_bollinger_bands(data, window=20, num_std=2):
+    # सिम्पल मव्हिंग एव्हरेज (SMA) आणि स्टँडर्ड डेव्हिएशन काढणे
+    sma = data['close'].rolling(window=window).mean()
+    std = data['close'].rolling(window=window).std()
+    
+    # अप्पर आणि लोअर बँड्स काढणे
+    upper_band = sma + (std * num_std)
+    lower_band = sma - (std * num_std)
+    
+    return upper_band, sma, lower_band
+
+def get_bollinger_action(data, upper_band, lower_band):
+    last_price = data['close'].iloc[-1]
+    last_upper = upper_band.iloc[-1]
+    last_lower = lower_band.iloc[-1]
+    
+    if last_price >= last_upper:
+        return "Put Signal: Price hit or exceeded the Upper Band"
+    elif last_price <= last_lower:
+        return "Buy Signal: Price hit or dropped below the Lower Band"
+    else:
+        return "No Action: Price is between bands"
+
+# उदाहरणार्थ, क्लोजिंग प्राईसेसचा डेटा
+prices = {'close': [100, 102, 101, 105, 108, 110, 109, 112, 115, 118, 
+                    120, 122, 121, 125, 128, 130, 132, 135, 138, 145]}
+df = pd.DataFrame(prices)
+
+# बँड्स कॅल्क्युलेट करणे
+upper, middle, lower = calculate_bollinger_bands(df)
+
+# सिग्नल तपासणे (पुट किंवा बाय)
+signal = get_bollinger_action(df, upper, lower)
+print(signal)
+import numpy as np
+import pandas as pd
+
+
+def calculate_indicators(df):
+  # 1. EMA (Exponential Moving Average - 50 और 200 अवधि)
+  df['EMA_50'] = df['Close'].ewm(span=50, adjust=False).mean()
+  df['EMA_200'] = df['Close'].ewm(span=200, adjust=False).mean()
+
+  # 2. Bollinger Bands (20 अवधि, 2 मानक विचलन)
+  df['BB_Middle'] = df['Close'].rolling(window=20).mean()
+  std_dev = df['Close'].rolling(window=20).std()
+  df['BB_Upper'] = df['BB_Middle'] + (std_dev * 2)
+  df['BB_Lower'] = df['BB_Middle'] - (std_dev * 2)
+
+  # 3. RSI (Relative Strength Index - 14 अवधि)
+  delta = df['Close'].diff()
+  gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+  loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+  rs = gain / loss
+  df['RSI'] = 100 - (100 / (1 + rs))
+
+  # 4. SMC Simplified Simulation (Order Block / Break of Structure)
+  # हाल ही में उच्च या निम्न स्तर को तोड़ने पर BOS मानेंगे
+  df['Higher_High'] = (df['High'] > df['High'].shift(1)) & (
+      df['High'].shift(1) > df['High'].shift(2)
+  )
+  df['Lower_Low'] = (df['Low'] < df['Low'].shift(1)) & (
+      df['Low'].shift(1) < df['Low'].shift(2)
+  )
+
+  return df
+
+
+def generate_sentiment(df):
+  df = calculate_indicators(df)
+
+  # सेंटीमेंट कॉलम जोड़ें
+  df['Sentiment'] = 'NEUTRAL'
+
+  # **Bullish Condition (तेजी का सेंटीमेंट)**:
+  # - कीमत Bollinger Band के निचले स्तर के पास हो या उससे बाउंस हो रही हो
+  # - RSI 40 से ऊपर हो (oversold से बाहर आ रहा हो)
+  # - कीमत EMA 50 से ऊपर हो (ट्रेंड पॉजिटिव)
+  # - SMC Bullish Structure (Lower Low बंद होना बंद और Higher High बनना)
+  bullish_cond = (
+      (df['Close'] <= df['BB_Lower'] * 1.01)
+      & (df['RSI'] > 40)
+      & (df['Close'] > df['EMA_50'])
+      & (df['Higher_High'])
+  )
+
+  # **Bearish Condition (मंदी का सेंटीमेंट)**:
+  # - कीमत Bollinger Band के ऊपरी स्तर के पास हो
+  # - RSI 60 से नीचे हो (overbought से नीचे आ रहा हो)
+  # - कीमत EMA 50 से नीचे हो
+  # - SMC Bearish Structure (Lower Low बनना)
+  bearish_cond = (
+      (df['Close'] >= df['BB_Upper'] * 0.99)
+      & (df['RSI'] < 60)
+      & (df['Close'] < df['EMA_50'])
+      & (df['Lower_Low'])
+  )
+
+  df.loc[bullish_cond, 'Sentiment'] = 'BULLISH'
+  df.loc[bearish_cond, 'Sentiment'] = 'BEARISH'
+
+  return df
+
+
+# --- उदाहरण के लिए डमी डेटा (Dummy Data) के साथ टेस्ट करने का तरीका ---
+if __name__ == '__main__':
+  # डमी प्राइस डेटा तैयार कर रहे हैं
+  np.random.seed(42)
+  data_size = 100
+  close_prices = 100 + np.cumsum(np.random.randn(data_size))
+
+  sample_data = pd.DataFrame({
+      'Open': close_prices - np.random.rand(data_size),
+      'High': close_prices + np.abs(np.random.randn(data_size)),
+      'Low': close_prices - np.abs(np.random.randn(data_size)),
+      'Close': close_prices,
+  })
+
+  # सेंटीमेंट फंक्शन कॉल करें
+  result_df = generate_sentiment(sample_data)
+
+  # अंतिम कुछ पंक्तियाँ देखें
+  print(
+      result_df[['Close', 'RSI', 'BB_Lower', 'BB_Upper', 'Sentiment']].tail(10)
+  )
