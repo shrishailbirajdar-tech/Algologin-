@@ -1,0 +1,112 @@
+from SmartApi import SmartConnect
+import pyotp
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# --- 1. Login & Session Setup ---
+api_key = "KGA1z4J3"
+client_id = "ASGOA2297"
+pin = "1234"  # अपना 4-digit MPIN डालें
+totp_secret = "B2VUAMV6T6B4V2SO2BYHE4KXGM"
+
+smart_obj = SmartConnect(api_key=api_key)
+totp_token = pyotp.TOTP(totp_secret).now()
+session_data = smart_obj.generateSession(client_id, pin, totp_token)
+
+if not session_data.get("status"):
+    print("Login Failed:", session_data.get("message"))
+    exit()
+
+print("Login Successful!")
+auth_token = session_data["data"]["jwtToken"]
+refresh_token = session_data["data"]["refreshToken"]
+
+
+# --- 2. Profile & Funds Check ---
+profile = smart_obj.getProfile(refresh_token)
+print("\n--- User Profile ---")
+print(profile.get("data", {}).get("name"))
+
+funds = smart_obj.rmsLimit()
+print("\n--- Available Funds ---")
+print("Net Margin:", funds.get("data", {}).get("net"))
+
+
+# --- 3. Live LTP / Quote Data ---
+# NSE Token Example: 3045 = SBIN-EQ
+ltp_data = smart_obj.ltpData(
+    exchange="NSE",
+    tradingsymbol="SBIN-EQ",
+    symboltoken="3045"
+)
+print("\n--- Live LTP (SBIN) ---")
+print("LTP:", ltp_data.get("data", {}).get("ltp"))
+
+
+# --- 4. Historical Candle Data ---
+historic_params = {
+    "exchange": "NSE",
+    "symboltoken": "3045",
+    "interval": "FIVE_MINUTE",  # ONE_MINUTE, FIVE_MINUTE, ONE_DAY etc.
+    "fromdate": "2026-08-10 09:15",
+    "todate": "2026-08-14 15:30"
+}
+candles = smart_obj.getCandleData(historic_params)
+print("\n--- Historical Data (Last Candle) ---")
+if candles.get("data"):
+    # Format: [timestamp, open, high, low, close, volume]
+    print(candles["data"][-1])
+
+
+# --- 5. Positions & Holdings ---
+positions = smart_obj.position()
+print("\n--- Open Positions ---")
+print(positions.get("data"))
+
+holdings = smart_obj.holding()
+print("\n--- Demat Holdings ---")
+print(holdings.get("data"))
+
+
+# --- 6. Order Placement (Example: Limit Order) ---
+order_params = {
+    "variety": "NORMAL",
+    "tradingsymbol": "SBIN-EQ",
+    "symboltoken": "3045",
+    "transactiontype": "BUY",
+    "exchange": "NSE",
+    "ordertype": "LIMIT",
+    "producttype": "INTRADAY",  # INTRADAY या DELIVERY
+    "duration": "DAY",
+    "price": "800.00",
+    "squareoff": "0",
+    "stoploss": "0",
+    "quantity": "1"
+}
+
+# ऑर्डर लगाने के लिए नीचे वाली लाइन अनकमेंट करें:
+# order_id = smart_obj.placeOrder(order_params)
+# print("\nOrder Placed Successfully! Order ID:", order_id)
+# Order parameters example for SmartAPI
+order_params = {
+    "variety": "NORMAL",
+    "tradingsymbol": "SBIN-EQ",
+    "symboltoken": "3045",
+    "transactiontype": "BUY",  # Change to "SELL" when selling
+    "exchange": "NSE",
+    "ordertype": "LIMIT",      # Or "MARKET"
+    "producttype": "INTRADAY", # Or "DELIVERY"
+    "duration": "DAY",
+    "price": "1067.70",          # Set your limit price (or "0" for market orders)
+    "squareoff": "0",
+    "stoploss": "0",
+    "quantity": "1"
+}
+
+try:
+    # Placing the order and retrieving the Order ID
+    order_id =smart_obj.placeOrder(order_params)
+    print(f"Order placed successfully. Order ID: {order_id}")
+except Exception as e:
+    print(f"Order placement failed: {e}")
