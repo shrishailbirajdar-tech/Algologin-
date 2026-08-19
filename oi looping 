@@ -1,0 +1,59 @@
+import time
+import pyotp
+from SmartApi import SmartConnect
+
+# 1. Credentials Setup
+API_KEY = "KGA1z4J3"
+CLIENT_CODE = "ASGOA2297"
+PASSWORD = "1234"
+TOTP_KEY = "B2VUAMV6T6B4V2SO2BYHE4KXGM"  # Add your TOTP Secret Key if needed
+
+# Initialize SmartConnect
+smartApi = SmartConnect(api_key=API_KEY)
+
+# Generate TOTP & Login
+try:
+    totp = pyotp.TOTP(TOTP_KEY).now()
+    data = smartApi.generateSession(CLIENT_CODE, PASSWORD, totp)
+    if data and data.get('status'):
+        print("Login Successful!")
+    else:
+        print("Authentication failed. Please check your credentials.")
+        exit()
+except Exception as e:
+    print(f"Login Error: {e}")
+    exit()
+
+# 2. Token Configuration
+payload = {
+    "mode": "FULL",
+    "exchangeTokens": {
+        "NSE": ["99926021"]  # SBIN-EQ example
+    }
+}
+
+# 3. Looping to Fetch and Print Data
+try:
+    print("\nStarting real-time data loop... Press Ctrl+C to stop.\n")
+    while True:
+        market_data = smartApi.getMarketData(payload["mode"], payload["exchangeTokens"])
+        
+        if market_data and market_data.get('status'):
+            fetched_list = market_data.get('data', {}).get('fetched', [])
+            
+            for item in fetched_list:
+                token = item.get('symbolToken')
+                ltp = item.get('ltp')
+                high = item.get('high')
+                low = item.get('low')
+                close = item.get('close')
+                
+                print(f"Token: {token} | LTP: {ltp} | High: {high} | Low: {low} | Close: {close}")
+        else:
+            print("Error fetching real-time data.")
+            
+        # Wait for 3 seconds before the next loop
+        time.sleep(3)
+
+except KeyboardInterrupt:
+    print("\nProcess stopped by user.")
