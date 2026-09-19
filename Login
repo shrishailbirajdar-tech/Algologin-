@@ -5,10 +5,10 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 1. Login & Session Setup ---
-api_key = "KGA1z4J3"
-client_id = "ASGOA2297"
-pin = "1234"  # अपना 4-digit MPIN डालें
-totp_secret = "B2VUAMV6T6B4V2SO2BYHE4KXGM"
+api_key = "xxx"
+client_id = "xxx"
+pin = "xxx"  # अपना 4-digit MPIN डालें
+totp_secret = "xxxx"
 
 smart_obj = SmartConnect(api_key=api_key)
 totp_token = pyotp.TOTP(totp_secret).now()
