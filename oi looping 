@@ -3,10 +3,10 @@ import pyotp
 from SmartApi import SmartConnect
 
 # 1. Credentials Setup
-API_KEY = "KGA1z4J3"
-CLIENT_CODE = "ASGOA2297"
-PASSWORD = "1234"
-TOTP_KEY = "B2VUAMV6T6B4V2SO2BYHE4KXGM"  # Add your TOTP Secret Key if needed
+API_KEY = "xxxx"
+CLIENT_CODE = "xxxx"
+PASSWORD = "xxxx"
+TOTP_KEY = "xxxx"  # Add your TOTP Secret Key if needed
 
 # Initialize SmartConnect
 smartApi = SmartConnect(api_key=API_KEY)
